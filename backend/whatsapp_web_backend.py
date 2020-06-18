@@ -73,6 +73,7 @@ class WhatsAppWeb(WebSocket):
                         "args": { "resource_instance_id": clientInstanceId }
                     };
                     self.clientInstances[clientInstanceId] = WhatsAppWebClient(onOpenCallback, onMessageCallback, onCloseCallback);
+
                 else:
                     currWhatsAppInstance = self.clientInstances[obj["whatsapp_instance_id"]];
                     callback = {
@@ -94,6 +95,10 @@ class WhatsAppWeb(WebSocket):
                     elif cmd == "backend-disconnectWhatsApp":
                         currWhatsAppInstance.disconnect();
                         self.sendJSON({ "type": "resource_disconnected", "resource": "whatsapp", "resource_instance_id": obj["whatsapp_instance_id"] }, tag);
+                    elif cmd == "backend-sendTextMessage":
+                        currWhatsAppInstance.sendTextMessage(number=obj["number"],
+                                                             text=obj["message"])
+
         except:
             eprint(traceback.format_exc());
 
