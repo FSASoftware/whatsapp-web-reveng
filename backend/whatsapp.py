@@ -142,7 +142,6 @@ class WhatsAppWebClient:
 
     def onMessage(self, ws, message):
         try:
-            print(message)
             messageSplit = message.split(",", 1);
             messageTag = messageSplit[0];
             try:
@@ -151,6 +150,7 @@ class WhatsAppWebClient:
                 return None
             
             if messageTag in self.messageQueue:											# when the server responds to a client's message
+                eprint(message)
                 pend = self.messageQueue[messageTag];
                 if pend["desc"] == "_status":
                     if messageContent[0] == 'Pong' and messageContent[1] == True:
@@ -194,6 +194,7 @@ class WhatsAppWebClient:
                         eprint(json.dumps(jsonObj));
                         if jsonObj[0] == "Conn":
                             Timer(25, lambda: self.activeWs.send('?,,')).start() # Keepalive Request
+
                             self.connInfo["clientToken"] = jsonObj[1]["clientToken"];
                             self.connInfo["serverToken"] = jsonObj[1]["serverToken"];
                             self.connInfo["browserToken"] = jsonObj[1]["browserToken"];
@@ -270,8 +271,8 @@ class WhatsAppWebClient:
     def sendTextMessage(self, number, text):
         messageId = "3EB0"+binascii.hexlify(Random.get_random_bytes(8)).upper()
         messageTag = str(getTimestamp())
-        messageParams = {"key": {"fromMe": True, "remoteJid": number + "@s.whatsapp.net", "id": messageId},"messageTimestamp": getTimestamp(), "status": 1, "message": {"conversation": text}}
-        msgData = ["action", {"type": "relay", "epoch": str(self.messageSentCount)},[["message", None, WAWebMessageInfo.encode(messageParams)]]]
+        messageParams = {"key": {"fromMe": True, "remoteJid": number + "@s.whatsapp.net", "id": messageId}, "messageTimestamp": getTimestamp(), "status": 1, "message": {"conversation": text}}
+        msgData = ["action", {"type": "relay", "epoch": "0"},[["message", None, WAWebMessageInfo.encode(messageParams)]]]
         print(msgData)
         encryptedMessage = WhatsAppEncrypt(self.loginInfo["key"]["encKey"], self.loginInfo["key"]["macKey"], whatsappWriteBinary(msgData))
         payload = bytearray(messageId) + bytearray(",") + bytearray(to_bytes(WAMetrics.MESSAGE, 1)) + bytearray([0x80]) + encryptedMessage
