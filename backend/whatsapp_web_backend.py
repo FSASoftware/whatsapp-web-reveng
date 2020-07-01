@@ -97,7 +97,8 @@ class WhatsAppWeb(WebSocket):
                         self.sendJSON({ "type": "resource_disconnected", "resource": "whatsapp", "resource_instance_id": obj["whatsapp_instance_id"] }, tag);
                     elif cmd == "backend-sendTextMessage":
                         currWhatsAppInstance.sendTextMessage(number=obj["number"],
-                                                             text=obj["message"])
+                                                             text=obj["message"],
+                                                             epoch=obj["epoch"])
 
         except:
             eprint(traceback.format_exc());
