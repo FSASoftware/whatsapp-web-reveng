@@ -9,7 +9,7 @@ def eprint(*args, **kwargs):							# from https://stackoverflow.com/a/14981125
 	print(*args, file=sys.stderr, **kwargs);
 
 def getTimestamp():
-	return int(time.time());
+	return str(int(time.time()));
 
 def getTimestampMs():
 	return int(round(time.time() * 1000));
