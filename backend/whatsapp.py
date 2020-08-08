@@ -12,9 +12,10 @@ from whatsapp_binary_writer import whatsappWriteBinary
 sys.dont_write_bytecode = True;
 
 import os;
+import random
 import signal;
 import base64;
-from threading import Thread, Timer
+from threading import Thread, Timer, Event
 import math;
 import time;
 import datetime;
@@ -140,6 +141,12 @@ class WhatsAppWebClient:
             self.onCloseCallback["func"](self.onCloseCallback);
         eprint("WhatsApp backend Websocket closed.");
 
+    def sendKeepAlive(self, min_interval_ms, max_interval_ms):
+        while True:
+            self.activeWs.send('?,,')
+            interval = random.randint(min_interval_ms, max_interval_ms)
+            Event().wait(interval)
+
     def onMessage(self, ws, message):
         try:
             messageSplit = message.split(",", 1);
@@ -193,7 +200,8 @@ class WhatsAppWebClient:
                     if isinstance(jsonObj, list) and len(jsonObj) > 0:					# check if the result is an array
                         eprint(json.dumps(jsonObj));
                         if jsonObj[0] == "Conn":
-                            Timer(25, lambda: self.activeWs.send('?,,')).start() # Keepalive Request
+                            # Timer(25, lambda: self.activeWs.send('?,,')).start() # Keepalive Request
+                            Timer(25, self.sendKeepAlive, {10, 30}).start()
 
                             self.connInfo["clientToken"] = jsonObj[1]["clientToken"];
                             self.connInfo["serverToken"] = jsonObj[1]["serverToken"];
