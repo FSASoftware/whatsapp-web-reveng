@@ -1,9 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import binascii
+import random
 import sys;
 
 from Crypto import Random
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad
+from hkdf import hkdf_expand
 
 from whatsapp_defines import WAWebMessageInfo, WAMetrics
 
@@ -35,11 +39,10 @@ import pyqrcode;
 from utilities import *;
 from whatsapp_binary_reader import whatsappReadBinary;
 
-WHATSAPP_WEB_VERSION="0,4,2081"
+WHATSAPP_WEB_VERSION = "0, 4, 2080"
 
 reload(sys);
 sys.setdefaultencoding("utf-8");
-
 
 
 def HmacSha256(key, sign):
@@ -85,7 +88,6 @@ def AESDecrypt(key, ciphertext):						# from https://stackoverflow.com/a/2086826
     return AESUnpad(plaintext);
 
 
-
 class WhatsAppWebClient:
     websocketIsOpened = False;
     onOpenCallback = None;
@@ -115,13 +117,12 @@ class WhatsAppWebClient:
     };
 
     def __init__(self, onOpenCallback, onMessageCallback, onCloseCallback):
+        self.msg_counter = 0
         self.onOpenCallback = onOpenCallback;
         self.onMessageCallback = onMessageCallback;
         self.onCloseCallback = onCloseCallback;
         websocket.enableTrace(True);
         self.connect();
-
-
 
     def onOpen(self, ws):
         try:
@@ -237,8 +238,6 @@ class WhatsAppWebClient:
         except:
             eprint(traceback.format_exc());
 
-
-
     def connect(self):
         self.activeWs = websocket.WebSocketApp("wss://web.whatsapp.com/ws",
                                                on_message = lambda ws, message: self.onMessage(ws, message),
@@ -253,17 +252,20 @@ class WhatsAppWebClient:
 
     def generateQRCode(self, callback=None):
         self.loginInfo["clientId"] = base64.b64encode(os.urandom(16));
-        messageTag = str(getTimestamp());
+        messageTag = str(getTimestamp()) + '.--{}'.format(self.msg_counter)
+        self.msg_counter += 1
         self.messageQueue[messageTag] = { "desc": "_login", "callback": callback };
-        message = messageTag + ',["admin","init",['+ WHATSAPP_WEB_VERSION + '],["Chromium at ' + datetime.datetime.now().isoformat() + '","Chromium"],"' + self.loginInfo["clientId"] + '",true]';
+        message = messageTag + ',["admin","init",['+ WHATSAPP_WEB_VERSION + '],["Windows","Chrome","10"],"' + self.loginInfo["clientId"] + '",true]';
         self.activeWs.send(message);
 
     def restoreSession(self, callback=None):
-        messageTag = str(getTimestamp())
+        messageTag = str(getTimestamp()) + '.--{}'.format(self.msg_counter)
+        self.msg_counter += 1
         message = messageTag + ',["admin","init",['+ WHATSAPP_WEB_VERSION + '],["Chromium at ' + datetime.now().isoformat() + '","Chromium"],"' + self.loginInfo["clientId"] + '",true]'
         self.activeWs.send(message)
 
-        messageTag = str(getTimestamp())
+        messageTag = str(getTimestamp()) + '.--{}'.format(self.msg_counter)
+        self.msg_counter += 1
         self.messageQueue[messageTag] = {"desc": "_restoresession"}
         message = messageTag + ',["admin","login","' + self.connInfo["clientToken"] + '", "' + self.connInfo[
             "serverToken"] + '", "' + self.loginInfo["clientId"] + '", "takeover"]'
@@ -279,19 +281,20 @@ class WhatsAppWebClient:
     def sendTextMessage(self, number, text):
         messageId = "3EB0"+binascii.hexlify(Random.get_random_bytes(8)).upper()
         messageTag = str(getTimestamp())
-        messageParams = {"key": {"fromMe": True, "remoteJid": number + "@s.whatsapp.net", "id": messageId}, "messageTimestamp": getTimestamp(), "status": 1, "message": {"conversation": text}}
-        msgData = ["action", {"type": "relay", "epoch": "0"},[["message", None, WAWebMessageInfo.encode(messageParams)]]]
+        messageParams = {"key": {"fromMe": True, "remoteJid": number + "@s.whatsapp.net", "id": messageId}, "messageTimestamp": getTimestamp(), "status": "PENDING", "message": {"conversation": text}}
+        msgData = ["action", {"type": "relay", "epoch": str(self.msg_counter)},[["message", None, WAWebMessageInfo.encode(messageParams)]]]
+        self.msg_counter += 1
         print(msgData)
         encryptedMessage = WhatsAppEncrypt(self.loginInfo["key"]["encKey"], self.loginInfo["key"]["macKey"], whatsappWriteBinary(msgData))
         payload = bytearray(messageId) + bytearray(",") + bytearray(to_bytes(WAMetrics.MESSAGE, 1)) + bytearray([0x80]) + encryptedMessage
-        print(payload)
         self.messageSentCount = self.messageSentCount + 1
         self.messageQueue[messageId] = {"desc": "__sending"}
         self.activeWs.send(payload, websocket.ABNF.OPCODE_BINARY)
         
     def status(self, callback=None):
         if self.activeWs is not None:
-            messageTag = str(getTimestamp())
+            messageTag = str(getTimestamp()) + '.--{}'.format(self.msg_counter)
+            self.msg_counter += 1
             self.messageQueue[messageTag] = {"desc": "_status", "callback": callback}
             message = messageTag + ',["admin", "test"]'
             self.activeWs.send(message)
