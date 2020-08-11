@@ -98,6 +98,8 @@ class WhatsAppWeb(WebSocket):
                     elif cmd == "backend-sendTextMessage":
                         currWhatsAppInstance.sendTextMessage(number=obj["number"],
                                                              text=obj["message"])
+                    elif cmd == "backend-getHistory":
+                        currWhatsAppInstance.sendQueryMessage(number=obj["number"])
 
         except:
             eprint(traceback.format_exc());

@@ -299,6 +299,26 @@ class WhatsAppWebClient:
             message = messageTag + ',["admin", "test"]'
             self.activeWs.send(message)
 
+    def sendQueryMessage(self, number):
+        messageTag = str(getTimestamp()) + '.--{}'.format(self.msg_counter)
+        msgData = ["query", {"type": "message",
+                             "epoch": str(self.msg_counter),
+                             "jid": "{}@s.whatsapp.net".format(number),
+                             "kind": "before",
+                             "owner": "true",
+                             "count": "30"},
+                   []]
+        self.msg_counter += 1
+        print(msgData)
+        encryptedMessage = WhatsAppEncrypt(self.loginInfo["key"]["encKey"], self.loginInfo["key"]["macKey"],
+                                           whatsappWriteBinary(msgData))
+        payload = bytearray(messageTag) + bytearray(",") + bytearray(to_bytes(WAMetrics.GROUP, 1)) + bytearray(
+            [0x80]) + encryptedMessage
+        print(payload)
+        self.messageSentCount = self.messageSentCount + 1
+        self.messageQueue[messageTag] = {"desc": "__sending"}
+        self.activeWs.send(payload, websocket.ABNF.OPCODE_BINARY)
+
     def disconnect(self):
         self.activeWs.send('goodbye,,["admin","Conn","disconnect"]');		# WhatsApp server closes connection automatically when client wants to disconnect
         #time.sleep(0.5);
