@@ -290,6 +290,9 @@ class WhatsAppWebClient:
         self.messageSentCount = self.messageSentCount + 1
         self.messageQueue[messageId] = {"desc": "__sending"}
         self.activeWs.send(payload, websocket.ABNF.OPCODE_BINARY)
+
+    def sendQueryMediaConn(self):
+        pass
         
     def status(self, callback=None):
         if self.activeWs is not None:
@@ -303,3 +306,39 @@ class WhatsAppWebClient:
         self.activeWs.send('goodbye,,["admin","Conn","disconnect"]');		# WhatsApp server closes connection automatically when client wants to disconnect
         #time.sleep(0.5);
         #self.activeWs.close();
+
+
+class FileHandler:
+    @staticmethod
+    def read_file(file_path):
+        with open(file_path, 'rb') as f:
+            return f.read()
+
+    @classmethod
+    def upload(cls, file_data):
+        mediaKey = bytearray(random.getrandbits(8) for _ in xrange(32))
+
+        iv, cipherKey, macKey, _ = cls.getMediaKeys(mediaKey)
+
+        cipher = AES.new(cipherKey, AES.MODE_CBC)
+        enc = cipher.encrypt(pad(file_data, AES.block_size))
+
+        fileLength = len(file_data)
+
+        h = hmac.new(key=macKey, digestmod=hashlib.sha256)
+        h.update(iv+enc)
+        mac = h.digest()[:10]
+
+        sha = hashlib.sha256()
+        sha.update(file_data)
+        fileSha256 = sha.digest()
+
+        sha = hashlib.sha256()
+        sha.update(enc+mac)
+        fileEncSha256 = sha.digest()
+
+    @staticmethod
+    def getMediaKeys(mediaKey):
+        mediaKeyExpanded = hkdf_expand(mediaKey, b"WhatsApp Document Keys", 122)
+
+        return mediaKeyExpanded[:16], mediaKeyExpanded[16:48], mediaKeyExpanded[48:80], mediaKeyExpanded[80:]
