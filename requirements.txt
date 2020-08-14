@@ -1,3 +1,4 @@
+requests
 websocket-client
 git+https://github.com/dpallot/simple-websocket-server.git
 curve25519-donna

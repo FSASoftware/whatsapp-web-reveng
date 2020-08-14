@@ -98,6 +98,8 @@ class WhatsAppWeb(WebSocket):
                     elif cmd == "backend-sendTextMessage":
                         currWhatsAppInstance.sendTextMessage(number=obj["number"],
                                                              text=obj["message"])
+                    elif cmd == "backend-sendFileMessage":
+                        currWhatsAppInstance.sendFile()
 
         except:
             eprint(traceback.format_exc());

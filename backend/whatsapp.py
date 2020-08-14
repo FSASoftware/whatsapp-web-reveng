@@ -8,6 +8,7 @@ from Crypto import Random
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 from hkdf import hkdf_expand
+import requests
 
 from whatsapp_defines import WAWebMessageInfo, WAMetrics
 
@@ -42,6 +43,7 @@ from whatsapp_binary_reader import whatsappReadBinary;
 WHATSAPP_WEB_VERSION = "0, 4, 2080"
 
 reload(sys);
+
 sys.setdefaultencoding("utf-8");
 
 
@@ -178,6 +180,12 @@ class WhatsAppWebClient:
                     pyqrcode.create(qrCodeContents, error='L').svg(svgBuffer, scale=6, background="rgba(0,0,0,0.0)", module_color="#122E31", quiet_zone=0);
                     if "callback" in pend and pend["callback"] is not None and "func" in pend["callback"] and pend["callback"]["func"] is not None and "tag" in pend["callback"] and pend["callback"]["tag"] is not None:
                         pend["callback"]["func"]({ "type": "generated_qr_code", "image": "data:image/svg+xml;base64," + base64.b64encode(svgBuffer.getvalue()), "content": qrCodeContents }, pend["callback"]);
+                elif pend["desc"] == "__querymedia":
+                    eprint("Media query: ", message)
+
+                    FileHandler.uploadFile(file_info=pend["data"],
+                                           media_query=json.loads(messageContent)["media_conn"])
+
             else:
                 try:
                     jsonObj = json.loads(messageContent);								# try reading as json
@@ -291,8 +299,15 @@ class WhatsAppWebClient:
         self.messageQueue[messageId] = {"desc": "__sending"}
         self.activeWs.send(payload, websocket.ABNF.OPCODE_BINARY)
 
-    def sendQueryMediaConn(self):
-        pass
+    def sendFile(self):
+        file_data = FileHandler.read_file("Clean Architecture.pdf")
+
+        messageTag = str(getTimestamp()) + '.--{}'.format(self.msg_counter)
+        self.msg_counter += 1
+        self.messageQueue[messageTag] = {"desc": "__querymedia",
+                                         "data": FileHandler.processFile(file_data)}
+        message = messageTag + ',["query","mediaConn"]'
+        self.activeWs.send(message)
         
     def status(self, callback=None):
         if self.activeWs is not None:
@@ -315,7 +330,7 @@ class FileHandler:
             return f.read()
 
     @classmethod
-    def upload(cls, file_data):
+    def processFile(cls, file_data):
         mediaKey = bytearray(random.getrandbits(8) for _ in xrange(32))
 
         iv, cipherKey, macKey, _ = cls.getMediaKeys(mediaKey)
@@ -336,6 +351,27 @@ class FileHandler:
         sha = hashlib.sha256()
         sha.update(enc+mac)
         fileEncSha256 = sha.digest()
+
+        return mediaKey, fileEncSha256, fileSha256, fileLength, enc, mac
+
+    @classmethod
+    def uploadFile(cls, file_info, media_query):
+        mediaKey, fileEncSha256, fileSha256, fileLength, enc, mac = file_info
+
+        hostname = media_query["hosts"][0]["hostname"]
+        auth = media_query["auth"]
+
+        token = base64.b64encode(fileEncSha256)
+
+        url = "https://{hostname}/mms/document/{token}?auth={auth}&token={token}".format(
+            hostname=hostname,
+            token=token,
+            auth=auth)
+
+        response = requests.post(url, data=enc+mac, headers={"Origin": "https://web.whatsapp.com",
+                                                             "Referer": "https://web.whatsapp.com/"})
+        eprint(response.status_code)
+        eprint(response.text)
 
     @staticmethod
     def getMediaKeys(mediaKey):
