@@ -157,6 +157,25 @@ class WhatsAppWebClient:
             messageTag = messageSplit[0]
             try:
                 messageContent = messageSplit[1]
+                if 'curr' in messageContent:
+                    client_version = WHATSAPP_WEB_VERSION.replace(" ", "").replace(",", ".").split(".")
+                    minor_client_version = client_version[0]
+                    major_client_version = client_version[1]
+                    patch_client_version = client_version[2]
+                    eprint(client_version)
+                    dictmessage = json.loads(messageContent)
+                    server_version = str(dictmessage['curr']).split(".")
+                    minor_server_version = server_version[0]
+                    major_server_version = server_version[1]
+                    patch_server_version = server_version[2]
+                    if minor_client_version != minor_server_version:
+                        eprint("New minor version detected")
+                    if major_client_version != major_server_version:
+                        eprint("New major version detected")
+                    if patch_client_version != patch_server_version:
+                        eprint("New patch version detected")
+                    if client_version == server_version:
+                        eprint("Versions are equal")
             except IndexError:
                 return
 
