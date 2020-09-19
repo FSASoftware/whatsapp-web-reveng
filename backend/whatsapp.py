@@ -204,12 +204,14 @@ class WhatsAppWebClient:
                     eprint("Media query: ", message)
 
                     FileHandler.uploadFile(file_info=pend["data"],
-                                           media_query=json.loads(messageContent)["media_conn"])
+                                           media_query=json.loads(messageContent)["media_conn"],
+                                           wa_instance=self)
 
             else:
                 try:
                     jsonObj = json.loads(messageContent)								# try reading as json
                 except ValueError, e:
+                    pass
                     if messageContent != "":
                         hmacValidation = HmacSha256(self.loginInfo["key"]["macKey"], messageContent[32:])
                         if hmacValidation != messageContent[:32]:
