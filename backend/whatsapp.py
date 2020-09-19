@@ -2,9 +2,11 @@
 # -*- coding: utf-8 -*-
 import binascii
 import sys
+import urllib
 
 from Crypto import Random
 from Crypto.Cipher import AES
+# from Crypto.Util.Padding import pad
 # from Crypto.Util.Padding import pad
 from hkdf import hkdf_expand
 import requests
@@ -30,6 +32,7 @@ import hmac
 import traceback
 
 import websocket
+from websocket import WebSocket
 import curve25519
 import pyqrcode
 from utilities import *
@@ -83,6 +86,20 @@ def AESDecrypt(key, ciphertext):						# from https://stackoverflow.com/a/2086826
     cipher = AES.new(key, AES.MODE_CBC, iv)
     plaintext = cipher.decrypt(ciphertext[AES.block_size:])
     return AESUnpad(plaintext)
+
+
+def generateId():
+    byte_array = [random.randint(0, 255) for _ in range(10)]
+
+    hex_array = str()
+    for i in byte_array:
+        h = hex(i).strip("0x").upper()
+        if len(h) == 1:
+            hex_array += "0"
+        hex_array += h
+
+    return hex_array
+
 
 
 class WhatsAppWebClient:
@@ -293,7 +310,7 @@ class WhatsAppWebClient:
         callback["func"]({ "type": "connection_info", "data": self.connInfo }, callback)
     
     def sendTextMessage(self, number, text):
-        messageId = "3EB0"+binascii.hexlify(Random.get_random_bytes(8)).upper()
+        messageId = generateId()
         messageTag = str(getTimestamp())
         messageParams = {"key": {"fromMe": True, "remoteJid": number + "@s.whatsapp.net", "id": messageId}, "messageTimestamp": getTimestamp(), "status": "PENDING", "message": {"conversation": text}}
         msgData = ["action", {"type": "relay", "epoch": str(self.msg_counter)},[["message", None, WAWebMessageInfo.encode(messageParams)]]]
@@ -301,6 +318,33 @@ class WhatsAppWebClient:
         print(msgData)
         encryptedMessage = WhatsAppEncrypt(self.loginInfo["key"]["encKey"], self.loginInfo["key"]["macKey"], whatsappWriteBinary(msgData))
         payload = bytearray(messageId) + bytearray(",") + bytearray(to_bytes(WAMetrics.MESSAGE, 1)) + bytearray([0x80]) + encryptedMessage
+        self.messageSentCount = self.messageSentCount + 1
+        self.messageQueue[messageId] = {"desc": "__sending"}
+        self.activeWs.send(payload, websocket.ABNF.OPCODE_BINARY)
+
+    def sendFileMessage(self, url, mediaKey, fileEncSha256, fileSha256,  fileLength):
+        messageId = "3EB0" + binascii.hexlify(Random.get_random_bytes(8)).upper()
+        messageParams = {"key": {"fromMe": True,
+                                 "remoteJid": "5511952187414@s.whatsapp.net",
+                                 "id": messageId},
+                         "messageTimestamp": getTimestamp(),
+                         "status": "ERROR",
+                         "message": {"documentMessage": {"url": url,
+                                                         # "mediaKey": mediaKey,
+                                                         # "fileEncSha256": fileEncSha256,
+                                                         # "fileSha256": fileSha256,
+                                                         # "fileLength": fileLength,
+                                                         "title": "teste",
+                                                         "fileName": "teste.pdf",
+                                                         "mimetype": "application/pdf"}}}
+        msgData = ["action", {"type": "relay", "epoch": str(self.msg_counter)},
+                   [["message", None, WAWebMessageInfo.encode(messageParams)]]]
+        self.msg_counter += 1
+        print(msgData)
+        encryptedMessage = WhatsAppEncrypt(self.loginInfo["key"]["encKey"], self.loginInfo["key"]["macKey"],
+                                           whatsappWriteBinary(msgData))
+        payload = bytearray(messageId) + bytearray(",") + bytearray(to_bytes(WAMetrics.MESSAGE, 1)) + \
+                  bytearray([0x80]) + encryptedMessage
         self.messageSentCount = self.messageSentCount + 1
         self.messageQueue[messageId] = {"desc": "__sending"}
         self.activeWs.send(payload, websocket.ABNF.OPCODE_BINARY)
@@ -314,6 +358,22 @@ class WhatsAppWebClient:
                                          "data": FileHandler.processFile(file_data)}
         message = messageTag + ',["query","mediaConn"]'
         self.activeWs.send(message)
+
+    # https://github.com/FSASoftware/whatsapp-web-reveng/#dealing-with-e2e-media
+    # def sendFile(self):
+    #     file_data = FileHandler.read_file("Clean Architecture.pdf")
+    #     processed_file_data = FileHandler.processFile(file_data)
+    #     fileEncSha256B64 = base64.b64encode(processed_file_data[1])
+    #
+    #     messageTag = str(getTimestamp()) + '.--{}'.format(self.msg_counter)
+    #     self.msg_counter += 1
+    #     self.messageQueue[messageTag] = {"desc": "__querymedia",
+    #                                      "data": FileHandler.processFile(file_data)}
+    #
+    #     message = messageTag + ',["action", "encr_upload", "document", {}]'.format(fileEncSha256B64)
+    #     eprint(message)
+    #     response = self.activeWs.send(message)
+    #     eprint(response)
         
     def status(self, callback=None):
         if self.activeWs is not None:
@@ -325,8 +385,8 @@ class WhatsAppWebClient:
 
     def disconnect(self):
         self.activeWs.send('goodbye,,["admin","Conn","disconnect"]')		# WhatsApp server closes connection automatically when client wants to disconnect
-        #time.sleep(0.5)
-        #self.activeWs.close()
+        time.sleep(0.5)
+        self.activeWs.close()
 
 
 class FileHandler:
@@ -361,23 +421,33 @@ class FileHandler:
         return mediaKey, fileEncSha256, fileSha256, fileLength, enc, mac
 
     @classmethod
-    def uploadFile(cls, file_info, media_query):
+    def uploadFile(cls, file_info, media_query, wa_instance):
         mediaKey, fileEncSha256, fileSha256, fileLength, enc, mac = file_info
 
         hostname = media_query["hosts"][0]["hostname"]
         auth = media_query["auth"]
 
         token = base64.b64encode(fileEncSha256)
+        token_quoted = urllib.quote(token, safe="")
 
         url = "https://{hostname}/mms/document/{token}?auth={auth}&token={token}".format(
             hostname=hostname,
-            token=token,
-            auth=auth)
+            # token_quoted=token_quoted,
+            auth=auth,
+            token=token)
+
+        eprint(url)
 
         response = requests.post(url, data=enc+mac, headers={"Origin": "https://web.whatsapp.com",
                                                              "Referer": "https://web.whatsapp.com/"})
         eprint(response.status_code)
         eprint(response.text)
+
+        wa_instance.sendFileMessage(url=response.json()['url'],
+                                    mediaKey=mediaKey,
+                                    fileEncSha256=fileEncSha256,
+                                    fileSha256=fileSha256,
+                                    fileLength=fileLength)
 
     @staticmethod
     def getMediaKeys(mediaKey):
